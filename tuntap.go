@@ -8,9 +8,9 @@ import (
 // Opts represents configuration for interface. The "name"
 // can be empty.
 type Opts struct {
-	Name        string
-	Mode        Mode
-	PackageInfo bool
+	Name       string
+	Mode       Mode
+	PacketInfo bool
 }
 
 // Interface represents virtual network interface.
@@ -32,7 +32,6 @@ type Interface struct {
 // the header in case that packet info is prepended, MTU + size
 // of ethernet frame (38 bytes, unless VLan tags are enabled). If
 // the buffer isn't large enough, the packet gets truncated.
-//
 func (i *Interface) Read(b []byte) (int, error) {
 	return i.f.Read(b)
 }
@@ -45,7 +44,6 @@ func (i *Interface) Read(b []byte) (int, error) {
 //
 // It is up to the caller to provide only packets
 // that fit MTU.
-//
 func (i *Interface) Write(b []byte) (int, error) {
 	return i.f.Write(b)
 }
@@ -57,6 +55,13 @@ func (i *Interface) Close() error {
 	return i.f.Close()
 }
 
+// Name returns the interface name assigned by the kernel. It may
+// differ from the one passed to New, e.g. when it was empty or
+// contained a pattern like "tun%d".
+func (i *Interface) Name() string {
+	return i.name
+}
+
 // Mode returns the mode of the adapter. It is
 // always the same as the one passed to New.
 func (i *Interface) Mode() Mode {
@@ -66,14 +71,33 @@ func (i *Interface) Mode() Mode {
 // The mode in which open the virtual network adapter.
 type Mode int
 
+// Depending on the type of device chosen the userspace program has to read/write
+// IP packets (with Tun) or ethernet frames (with Tap). Which one is being used
+// depends on the flags given with the ioctl().
 const (
-	// Depending on the type of device chosen the userspace program has to read/write
-	// IP packets (with Tun) or ethernet frames (with Tap). Which one is being used
-	// depends on the flags given with the ioctl().
 	_ Mode = iota
+	// Tun reads and writes IP packets.
 	Tun
+	// Tap reads and writes ethernet frames.
 	Tap
 )
+
+func (m Mode) String() string {
+	switch m {
+	case Tun:
+		return "tun"
+	case Tap:
+		return "tap"
+	default:
+		return fmt.Sprintf("Mode(%d)", int(m))
+	}
+}
+
+type setupOpts struct {
+	name       string
+	mode       Mode
+	packetInfo bool
+}
 
 // New creates TUN/TAP interface.
 func New(opts Opts) (*Interface, error) {
@@ -84,18 +108,18 @@ func New(opts Opts) (*Interface, error) {
 		return nil, fmt.Errorf("invalid interface mode: %v", opts.Mode)
 	}
 
-	fd, err := tunTapSetup(setupOpts{
-		name:        opts.Name,
-		mode:        opts.Mode,
-		packageInfo: opts.PackageInfo,
+	fd, name, err := tunTapSetup(setupOpts{
+		name:       opts.Name,
+		mode:       opts.Mode,
+		packetInfo: opts.PacketInfo,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return &Interface{
-		name: opts.Name,
+		name: name,
 		mode: opts.Mode,
-		f:    os.NewFile(uintptr(fd), opts.Name),
+		f:    os.NewFile(uintptr(fd), "/dev/net/tun"),
 	}, nil
 }

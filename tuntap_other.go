@@ -1,14 +1,13 @@
+//go:build !linux
 // +build !linux
 
 package tuntap
 
 import (
 	"errors"
-	"os"
 	"runtime"
 )
 
-func tunTapSetup() (*os.File, error) {
-	return nil, errors.New("not supported on" + runtime.GOOS)
+func tunTapSetup(opts setupOpts) (int, string, error) {
+	return 0, "", errors.New("tuntap: not supported on " + runtime.GOOS)
 }
-
