@@ -13,19 +13,23 @@ import (
 // They can be used on any socket's file descriptor regardless of
 // the family or type.  Most of them pass an ifReq structure.
 //
-// Based on ifreq struct - https://elixir.bootlin.com/linux/v4.9.164/source/include/uapi/linux/if.h#L226
+// Based on ifreq struct - https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/if.h#L226
 // Kernel waiting for flags field for tun/tap configuration.
 //
-// The kernel copies the whole sizeof(struct ifreq) (40 bytes) in both
-// directions, so the structure is padded to the full size of the union.
+// The kernel copies the whole sizeof(struct ifreq) in both directions
+// (40 bytes on 64-bit, 32 bytes on 32-bit architectures), so the
+// structure is padded to be no smaller than that on any architecture.
 type ifReq struct {
 	name  [syscall.IFNAMSIZ]byte
 	flags uint16
 	_     [22]byte
 }
 
-func ioctl(fd, req, arg uintptr) error {
-	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd, req, arg)
+// ioctl takes arg as unsafe.Pointer: the conversion to uintptr must
+// happen in the syscall.Syscall call expression itself, otherwise the
+// referenced object may be moved (e.g. on stack growth) before the call.
+func ioctl(fd int, req uintptr, arg unsafe.Pointer) error {
+	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), req, uintptr(arg))
 	if err != 0 {
 		return os.NewSyscallError("ioctl", err)
 	}
@@ -54,10 +58,10 @@ func tunTapSetup(opts setupOpts) (int, string, error) {
 	}
 
 	var r ifReq
-	copy(r.name[:syscall.IFNAMSIZ-1], opts.name)
+	copy(r.name[:], opts.name)
 	r.flags = flags
 
-	if err := ioctl(uintptr(fd), syscall.TUNSETIFF, uintptr(unsafe.Pointer(&r))); err != nil {
+	if err := ioctl(fd, syscall.TUNSETIFF, unsafe.Pointer(&r)); err != nil {
 		syscall.Close(fd)
 		return 0, "", err
 	}

@@ -1,6 +1,6 @@
 # Go TUN/TAP support
 
-Designed by https://docs.rs/tun-tap/
+Inspired by https://docs.rs/tun-tap/
 
 ## Examples
 
@@ -16,7 +16,7 @@ import (
 
 func main() {
 	nic, err := tuntap.New(tuntap.Opts{
-		Name: "tun0",
+		Name: "tun%d", // the kernel picks the first free number
 		Mode: tuntap.Tun,
 	})
 	if err != nil {
@@ -28,7 +28,10 @@ func main() {
 		}
 	}()
 
-	packet := make([]byte, 1504)
+	fmt.Println("Interface:", nic.Name())
+
+	// MTU (1500); add 4 bytes if PacketInfo is enabled.
+	packet := make([]byte, 1500)
 
 	n, err := nic.Read(packet)
 	if err != nil {
@@ -53,21 +56,12 @@ github.com/rokkerruslan/tcp
 
 - It is tested only on Linux and probably doesn't work anywhere else, even
   though other systems have some TUN/TAP support. Reports that it works (or not)
-  and pull request to add other sustem's support are welcome.
+  and pull request to add other system's support are welcome.
 
 Creating the devices requires CAP_NET_ADMIN privileges (most commonly done by
 running as root).
 
-```
-$ cat main.go
-// file...
-
-$ go build
-$ sudo setcap cap_net_admin=eip ./bin
-$ ./bin
-```
-
 ## Alternatives
 
 1. water. Has incorrect flags for created interface and we can't get EtherType
-   from packet. Maybe now suppored.
+   from packet. Maybe now supported.

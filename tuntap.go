@@ -3,7 +3,12 @@ package tuntap
 import (
 	"fmt"
 	"os"
+	"strings"
 )
+
+// maxNameLen is the maximum length of an interface name, IFNAMSIZ-1
+// (the last byte is reserved for the NUL terminator).
+const maxNameLen = 15
 
 // Opts represents configuration for interface. The "name"
 // can be empty.
@@ -28,10 +33,11 @@ type Interface struct {
 // is copied into the provided buffer.
 //
 // Make sure the buffer is large enough. It is MTU of the
-// interface (usually 1500, unless reconfigured) + 4 for
-// the header in case that packet info is prepended, MTU + size
-// of ethernet frame (38 bytes, unless VLan tags are enabled). If
-// the buffer isn't large enough, the packet gets truncated.
+// interface (usually 1500, unless reconfigured), plus 4 bytes
+// for the header in case that packet info is prepended, plus
+// 14 bytes of the ethernet header in Tap mode (18 if VLAN tags
+// are used). If the buffer isn't large enough, the packet gets
+// truncated.
 func (i *Interface) Read(b []byte) (int, error) {
 	return i.f.Read(b)
 }
@@ -50,7 +56,8 @@ func (i *Interface) Write(b []byte) (int, error) {
 
 // Close closes underlying file descriptor. When the program
 // closes the file descriptor, the network device and all
-// corresponding routes will disappear.
+// corresponding routes will disappear, unless the device was
+// made persistent (TUNSETPERSIST).
 func (i *Interface) Close() error {
 	return i.f.Close()
 }
@@ -68,7 +75,7 @@ func (i *Interface) Mode() Mode {
 	return i.mode
 }
 
-// The mode in which open the virtual network adapter.
+// Mode is the type of the virtual network adapter.
 type Mode int
 
 // Depending on the type of device chosen the userspace program has to read/write
@@ -82,6 +89,7 @@ const (
 	Tap
 )
 
+// String returns "tun" or "tap".
 func (m Mode) String() string {
 	switch m {
 	case Tun:
@@ -106,6 +114,13 @@ func New(opts Opts) (*Interface, error) {
 	case Tap:
 	default:
 		return nil, fmt.Errorf("invalid interface mode: %v", opts.Mode)
+	}
+
+	if len(opts.Name) > maxNameLen {
+		return nil, fmt.Errorf("interface name %q is too long: %d bytes, max %d", opts.Name, len(opts.Name), maxNameLen)
+	}
+	if strings.IndexByte(opts.Name, 0) >= 0 {
+		return nil, fmt.Errorf("interface name %q contains NUL byte", opts.Name)
 	}
 
 	fd, name, err := tunTapSetup(setupOpts{
