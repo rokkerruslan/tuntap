@@ -5,8 +5,9 @@ package tuntap
 
 import (
 	"os"
-	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // Linux supports some standard ioctls to configure network devices.
@@ -20,16 +21,16 @@ import (
 // (40 bytes on 64-bit, 32 bytes on 32-bit architectures), so the
 // structure is padded to be no smaller than that on any architecture.
 type ifReq struct {
-	name  [syscall.IFNAMSIZ]byte
+	name  [unix.IFNAMSIZ]byte
 	flags uint16
 	_     [22]byte
 }
 
 // ioctl takes arg as unsafe.Pointer: the conversion to uintptr must
-// happen in the syscall.Syscall call expression itself, otherwise the
+// happen in the unix.Syscall call expression itself, otherwise the
 // referenced object may be moved (e.g. on stack growth) before the call.
 func ioctl(fd int, req uintptr, arg unsafe.Pointer) error {
-	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), req, uintptr(arg))
+	_, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), req, uintptr(arg))
 	if err != 0 {
 		return os.NewSyscallError("ioctl", err)
 	}
@@ -40,7 +41,7 @@ func ioctl(fd int, req uintptr, arg unsafe.Pointer) error {
 // tunTapSetup returns file descriptor of the configured device and
 // the interface name assigned by the kernel.
 func tunTapSetup(opts setupOpts) (int, string, error) {
-	fd, err := syscall.Open("/dev/net/tun", os.O_RDWR|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	fd, err := unix.Open("/dev/net/tun", unix.O_RDWR|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return 0, "", os.NewSyscallError("open", err)
 	}
@@ -48,21 +49,21 @@ func tunTapSetup(opts setupOpts) (int, string, error) {
 	var flags uint16
 	switch opts.mode {
 	case Tun:
-		flags |= syscall.IFF_TUN
+		flags |= unix.IFF_TUN
 	case Tap:
-		flags |= syscall.IFF_TAP
+		flags |= unix.IFF_TAP
 	}
 
 	if !opts.packetInfo {
-		flags |= syscall.IFF_NO_PI
+		flags |= unix.IFF_NO_PI
 	}
 
 	var r ifReq
 	copy(r.name[:], opts.name)
 	r.flags = flags
 
-	if err := ioctl(fd, syscall.TUNSETIFF, unsafe.Pointer(&r)); err != nil {
-		syscall.Close(fd)
+	if err := ioctl(fd, unix.TUNSETIFF, unsafe.Pointer(&r)); err != nil {
+		unix.Close(fd)
 		return 0, "", err
 	}
 

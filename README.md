@@ -43,7 +43,7 @@ func main() {
 ```
 
 ```shell
-$ go build
+$ go build -o bin
 $ sudo setcap cap_net_admin=eip ./bin
 $ ./bin
 ```
