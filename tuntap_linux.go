@@ -5,42 +5,18 @@ package tuntap
 
 import (
 	"os"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
-// Linux supports some standard ioctls to configure network devices.
-// They can be used on any socket's file descriptor regardless of
-// the family or type.  Most of them pass an ifReq structure.
-//
-// Based on ifreq struct - https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/if.h#L226
-// Kernel waiting for flags field for tun/tap configuration.
-//
-// The kernel copies the whole sizeof(struct ifreq) in both directions
-// (40 bytes on 64-bit, 32 bytes on 32-bit architectures), so the
-// structure is padded to be no smaller than that on any architecture.
-type ifReq struct {
-	name  [unix.IFNAMSIZ]byte
-	flags uint16
-	_     [22]byte
-}
-
-// ioctl takes arg as unsafe.Pointer: the conversion to uintptr must
-// happen in the unix.Syscall call expression itself, otherwise the
-// referenced object may be moved (e.g. on stack growth) before the call.
-func ioctl(fd int, req uintptr, arg unsafe.Pointer) error {
-	_, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), req, uintptr(arg))
-	if err != 0 {
-		return os.NewSyscallError("ioctl", err)
-	}
-
-	return nil
-}
-
 // tunTapSetup returns file descriptor of the configured device and
 // the interface name assigned by the kernel.
 func tunTapSetup(opts setupOpts) (int, string, error) {
+	ifr, err := unix.NewIfreq(opts.name)
+	if err != nil {
+		return 0, "", err
+	}
+
 	fd, err := unix.Open("/dev/net/tun", unix.O_RDWR|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return 0, "", os.NewSyscallError("open", err)
@@ -58,22 +34,12 @@ func tunTapSetup(opts setupOpts) (int, string, error) {
 		flags |= unix.IFF_NO_PI
 	}
 
-	var r ifReq
-	copy(r.name[:], opts.name)
-	r.flags = flags
+	ifr.SetUint16(flags)
 
-	if err := ioctl(fd, unix.TUNSETIFF, unsafe.Pointer(&r)); err != nil {
+	if err := unix.IoctlIfreq(fd, unix.TUNSETIFF, ifr); err != nil {
 		unix.Close(fd)
-		return 0, "", err
+		return 0, "", os.NewSyscallError("ioctl", err)
 	}
 
-	name := r.name[:]
-	for i, c := range name {
-		if c == 0 {
-			name = name[:i]
-			break
-		}
-	}
-
-	return fd, string(name), nil
+	return fd, ifr.Name(), nil
 }
