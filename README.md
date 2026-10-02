@@ -50,7 +50,7 @@ $ ./bin
 
 ## Usages
 
-github.com/rokkerruslan/tcp
+github.com/rokkerruslan/netstack
 
 ## Known issues
 
